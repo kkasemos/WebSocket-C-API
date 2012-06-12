@@ -63,7 +63,7 @@ int main(void)
 	cli_addr_len = sizeof(struct sockaddr);
 	clisck = websck_accept(srvsck, &cli_addr, &cli_addr_len);
 
-	/* /\* receive the socket *\/ */
+	/* receive the socket */
 	flags = 0;
 	bytes_read = websck_recv(clisck, buffer, MAX_MSG, flags);
 	print_hex(buffer, bytes_read);

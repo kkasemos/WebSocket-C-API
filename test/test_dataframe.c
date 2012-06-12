@@ -50,7 +50,7 @@ START_TEST(test_datfrm_create_txt)
 	fail_unless(datfrm_get_mask(frm) == MASK_OFF,
 		    "Failed to set mask");
 
-	fail_unless(datfrm_get_payload_len(frm) == 11, 
+    	fail_unless(datfrm_get_payload_len(frm) == 11, 
 		    "Failed to set payload lenght == 11");
 
 	/* a frame lenght >= 126) */

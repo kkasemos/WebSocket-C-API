@@ -4,11 +4,16 @@
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netdb.h>
+#include <errno.h>
+#include "util.h"
 #include "handshake.h"
 #include "websocket.h"
 #include "dataframe.h"
 
 #define MAX_BUFF_LEN 1024
+
+struct linklist websck_srv_list;
+struct linklist websck_cli_list;
 
 ssize_t (*neti_recv)(int socket, void *buffer, size_t size, int flags);
 ssize_t (*neti_send)(int socket, const void *buffer, size_t size, int flags);
@@ -33,24 +38,28 @@ int websck_init_sockaddr(struct sockaddr_in *name, const char *hostname, uint16_
 
 int websck_bind(const char* hostname, uint16_t port)
 {
-  int sock;
-  struct sockaddr_in name;
-  struct hostent *hostinfo;
+	int sock;
+	struct sockaddr_in name;
+	struct hostent *hostinfo;
+	struct websck_srv_data *srvdata;
 
-  /* create the socket */
-  sock = socket(PF_INET, SOCK_STREAM, 0);
-  if(sock < 0)
-  {
-    perror("could not create the socket");
-  }
+	/* create the socket */
+	sock = socket(PF_INET, SOCK_STREAM, 0);
+	if(sock < 0)
+	{
+		perror("could not create the socket");
+	}
+	
+	websck_init_sockaddr(&name, hostname, port);
+	if(bind(sock, (struct sockaddr *)&name, sizeof(name)) < 0)
+	{
+		perror("Failed to bind the socket");
+	}
 
-  websck_init_sockaddr(&name, hostname, port);
-  if(bind(sock, (struct sockaddr *)&name, sizeof(name)) < 0)
-  {
-    perror("Failed to bind the socket");
-  }
+	/* create websocket server data */
+	srvdata = websck_create_srv_data(sock);
 
-  return sock;
+	return sock;
 }
 
 int websck_connect(const char* hostname, uint16_t port)
@@ -94,10 +103,100 @@ int websck_recv(int socket, void *buffer, size_t size, int flags)
 	unsigned char frm[MAX_BUFF_LEN];
 	size_t plen; /* payload length */
 	int    rb;   /* received bytes */
+	struct websck_cli_data clidata;
 
-	rb = recv(socket, frm, size, flags);
-	print_hex(frm, rb);
+	/* get the clinet's buffer by the socket */
+	clidata = websck_get_cli(socket);
 
+	/* operate as websocket state */
+	switch(clidata->state) {
+	case WEBSCK_RECV_PAYLOAD:
+		/* receving the payload */
+		websck_buff_recv_pload(clidata->inbuff);
+
+		/* all the payload received? */
+		if(websck_buff_pload_recv(clidata->inbuff)) {
+			clidata->state = WEBSCK_READY;
+			/* reset */
+		}
+		break;
+	case WEBSCK_READY:
+		/* ready to read the next frame */
+		if(websck_buff_is_empty(cli->inbuff)) {
+			/* receive data from the socket */
+		}
+
+		/* iterate the frame in the buffer */
+		websck_buff_recv_frm(cli->inbuff);
+
+		break;
+	case WEBSCK_RECV_FRAME:
+		/* receving the frame */
+		break;
+		
+	}
+
+	/* end of payload? */
+	if(!websck_buff_is_eop(clidata->inbuff)) {
+		psize = websck_buff_recv_pload(buffer, size, clidata->inbuff);
+		
+		/* could copy all? */
+		if() {
+			websck_buff_reset_iter(clidata->inbuff);
+		}
+	}
+
+	if(!websck_buff_is_empty(clidata->inbuff)) {
+		fsize = websck_buff_recv_frm(socket, clidata->inbuff);
+		
+		/* frame is complete */
+		if(fsize > 0) {
+			/* copy frame's payload */
+			csize = websck_buff_recv_pload(buffer, size, clidata->inbuff);
+
+			/* could copy all? */
+			if(csize == size) {
+				websck_buff_reset_iter(clidata->inbuff);
+			} 
+				
+			
+		}
+	}
+
+	/* read websocket frame to the buffer if there is space available */
+	if(!websck_buff_is_full(clidata->inbuff)) {
+		/* if there is space available at the end */
+		esize = websck_buff_end_size(clidata->inbuff);
+		rb = neti_recv(socket, clidata->data + clidata->end, 
+			       endsize, flags);
+
+		/* if there is space available at the begining */
+		bsize = websck_buff_begin_size(clidata->inbuff);
+		rb = neti_recv(socket, clidata->data + , 
+			       clidata->size - clidata->usesize, flags);
+	}
+	
+	rb = neti_recv(socket, frm, size, flags);
+	/* print_hex(frm, rb); */
+
+	if(rb == -1) {
+		/* if no data in the socket in the case of non-blocking I/O */
+		if(errno == EAGAIN || errno == EWOULDBLOCK) {
+			errno = WEBSCK_AGAIN;
+		} else {
+			errno = WEBSCK_SYS_ERR;
+		}
+		return -1;
+	}
+
+	/* verify if the frame is complete */
+	if(!datfrm_is_complete(frm)) {
+		/* threat it as no data in the socket in the case of
+		   non-blocking I/O */ 
+		errno = WEBSCK_AGAIN;
+		return -1;
+	}
+	
 	/* get FIN flag */
 	fin = datfrm_get_fin(frm);
 	
@@ -145,6 +244,11 @@ int websck_send(int socket, void *buffer, size_t size, int flags)
 	return bs;
 }
 
+struct websck_srv_data *websck_get_srv_data(int srvsck)
+{
+	return 0;
+}
+
 int websck_accept(int socket, struct sockaddr *addr, socklen_t *lenp)
 {
 	int clisck;
@@ -162,9 +266,17 @@ int websck_accept(int socket, struct sockaddr *addr, socklen_t *lenp)
 	if(r < 0) {
 		return -1;
 	} else {
+		//struct websck_srv_data *srvdata;
+		struct websck_cli_data *clidata;
+
 		hndshk_gen_srv(&clihnd, &srvhnd);
 		websck_send_srv_hndshk(clisck, &srvhnd);
+		
+		clidata = websck_create_cli_data(clisck);
+		//srvdata = websck_get_srv_data(socket);
+		websck_add_cli(clidata);
 	}
+
 	return clisck;
 }
 
@@ -204,6 +316,7 @@ int websck_send_hndshk(int socket, char *buff, size_t size)
 int websck_recv_hndshk(int socket, char *buff, size_t size)
 {
 	int n;
+	int hsize = 0; /* handshake size */
 	char rb[MAX_BUFF_LEN];
 	char *rbp, *rbep;  /* pointer to read buffer */
 	char *rtp, *rtep;  /* pointer to return buffer */
@@ -226,11 +339,14 @@ int websck_recv_hndshk(int socket, char *buff, size_t size)
 			*rtp = *rbp;
 			rbp++;
 			rtp++;
+			hsize++;
 		}
+
 		if(*rbp == '\n') {
 			*rtp = *rbp;
 			rbp++;
 			rtp++;
+			hsize++;
 		}
 
 		/* second CRLF */
@@ -238,11 +354,14 @@ int websck_recv_hndshk(int socket, char *buff, size_t size)
 			*rtp = *rbp;
 			rbp++;
 			rtp++;
+			hsize++;
 		}
+
 		if(*rbp == '\n') {
 			*rtp = *rbp;
 			rbp++;
 			rtp++;
+			hsize++;
 			break;
 		}
 
@@ -250,9 +369,11 @@ int websck_recv_hndshk(int socket, char *buff, size_t size)
 
 		rbp++;
 		rtp++;
+		hsize++;
 	}
 	//printf("%*s\n", n, rb);
-	return (rtp >= rtep)? -1:(rtp - buff);
+	//return (rtp >= rtep)? -1:(rtp - buff);
+	return (rtp >= rtep)? -1:hsize;
 }
 
 int websck_parse_cli_hndshk(const char *buff, ssize_t size, struct websck_hndshk *hndp)
@@ -263,23 +384,108 @@ int websck_parse_cli_hndshk(const char *buff, ssize_t size, struct websck_hndshk
 
 int websck_init_lib(void)
 {
-  //#ifdef WEBSCK_TEST
-  neti_recv = recv;
-  neti_send = send;
-  neti_accept = accept;
-  //#else
-  //platf_recv = test_recv;
-  //#endif /* WENSCK_TEST */
+	neti_recv = recv;
+	neti_send = send;
+	neti_accept = accept;
 }
-/*
-int websck_send_srv_handshk(int clifd, struct websck_handshake *hndp, int len)
+
+struct websck_srv_data *websck_get_srv(int srvsck)
 {
-  int srvhlen;
-  char *srvhp;
+	struct websck_srv_data *srvdata = NULL;
 
-  websck_create_srv_handshk(buff, len, hndp, &hndlen) 
-  websck_send(clifd, buff, len, 0);  
+	/* iterate the global server list */
+	struct linkiter *iter = linkiter_create(&websck_srv_list);
+	int found = 0;
+	while(!linkiter_eol(iter) && !found)
+	{
+		struct linknode *node = linkiter_next(iter);
+		srvdata = (struct websck_srv_data*)node->data;
+		
+		if(srvdata->sock == srvsck)
+			found = 1;	    
+	}
+
+	return srvdata;
 }
 
-int websck_srv_handshk(
-*/
+void websck_add_cli(struct websck_cli_data *clidata)
+{
+	linklist_add(&websck_cli_list, clidata);
+}
+
+void websck_add_srv(struct websck_srv_data *srvdata)
+{
+	linklist_add(&websck_srv_list, srvdata);
+}
+
+struct websck_buff *websck_create_buff(size_t size)
+{
+	struct websck_buff *buff = 
+		(struct websck_buff*)malloc(sizeof(struct websck_buff));
+
+	buff->data = (unsigned char*)malloc(sizeof(unsigned char)*size);
+	buff->size = size;
+
+	return buff;
+}
+
+void websck_init_srv_data(struct websck_srv_data *srvdata)
+{
+	srvdata->inbuff = (struct websck_buff*)0;
+	srvdata->outbuff = (struct websck_buff*)0;
+	srvdata->sock = -1;
+	/* srvdata->clinum = 0; */
+	/* srvdata->clients = (struct linklist*)0; */
+}
+
+void websck_set_default_srv_data(struct websck_srv_data *srvdata, int srvsck)
+{
+	srvdata->inbuff = websck_create_buff(WEBSCK_MAX_IN_BUFF);
+	srvdata->outbuff = websck_create_buff(WEBSCK_MAX_OUT_BUFF);
+	srvdata->sock = srvsck;
+	/* srvdata->clients = linklist_create(); */
+}
+
+struct websck_srv_data *websck_create_srv_data(int srvsck)
+{
+	struct websck_srv_data *srvdata;
+
+	srvdata = (struct websck_srv_data*)malloc(sizeof(struct websck_srv_data));
+	websck_init_srv_data(srvdata);
+
+	/* set default value of the server data */
+	websck_set_default_srv_data(srvdata, srvsck);
+
+	/* add the server data to the global list */
+	websck_add_srv(srvdata);
+
+	return srvdata;
+}
+
+struct websck_cli_data *websck_create_cli_data(int clisck)
+{
+	struct websck_cli_data *clidata;
+
+	clidata = 
+		(struct websck_cli_data*)malloc(sizeof(struct websck_cli_data));
+
+	websck_init_cli_data(clidata);
+	websck_set_default_cli_data(clidata, clisck);
+	websck_add_cli(clidata);
+
+	return clidata;
+}
+
+void websck_init_cli_data(struct websck_cli_data *clidata)
+{
+	clidata->inbuff  = (struct websck_buff*)0;
+	clidata->outbuff = (struct websck_buff*)0;
+	clidata->sock    = -1;
+}
+
+void websck_set_default_cli_data(struct websck_cli_data *clidata, int clisck)
+{
+	clidata->inbuff  = websck_create_buff(WEBSCK_MAX_IN_BUFF);
+	clidata->outbuff = websck_create_buff(WEBSCK_MAX_OUT_BUFF);
+	clidata->sock    = clisck;
+}

@@ -5,6 +5,7 @@
 #include <sys/types.h>
 #include <pthread.h>
 #include <check.h>
+#include "util.h"
 #include "handshake.h"
 #include "websocket.h"
 
@@ -76,21 +77,54 @@ void  start_client_websck_test_thread(const char *host, uint16_t port)
 	pthread_attr_destroy(&thrd_attr);
 }
 
+START_TEST(test_websck_create_srv_data)
+{
+	int srvsck = 1;
+	struct websck_srv_data *srvdata = websck_create_srv_data(srvsck);
+
+	fail_unless(srvdata->inbuff->data != (unsigned char*)0,
+		    "Failed to allocate the server input buffer");
+
+	fail_unless(srvdata->inbuff->size == WEBSCK_MAX_IN_BUFF,
+		    "Failed the server input buffer lenght is %d",
+		    srvdata->inbuff->size);
+
+	fail_unless(srvdata->outbuff->data != (unsigned char*)0,
+		    "Failed to allocate the server output buffer");
+
+	fail_unless(srvdata->outbuff->size == WEBSCK_MAX_OUT_BUFF,
+		    "Failed the server output buffer lenght is %d",
+		    srvdata->inbuff->size);
+
+	fail_unless(srvdata->sock == srvsck,
+		    "Failed the server socket is %d", srvdata->sock);
+
+	/* fail_unless(srvdata->clinum == 0, */
+	/* 	    "Failed the number of the server's client is %d", */
+	/* 	    srvdata->clinum); */
+
+	/* fail_unless(srvdata->clients->size == 0, */
+	/* 	    "Failed to initialize the client list"); */
+}
+END_TEST
+
 /* integration test */
 START_TEST(test_websck_integr)
 {
 	int serv_fd, clisck;
 	fd_set active_fd_set, read_fd_set;
 	int success;
+	int flags;
+	int err;
+
 	struct sockaddr cli_addr;
 	socklen_t cli_addr_len;
 	char buffer[MAX_MSG];
-	int flags;
-	ssize_t bytes_read;
-	int err;
-	ssize_t bytes_send;
 	struct timeval timeout;
 	uint16_t port; 
+
+	ssize_t bytes_read;
+	ssize_t bytes_send;
 
 	/* initialize websocket library */
 	websck_init_lib();
@@ -266,6 +300,12 @@ Suite *websck_suite(void)
 	tc = tcase_create("test_websck_send_srv_hndshk");
 	tcase_add_test(tc, test_websck_send_srv_hndshk);
 	suite_add_tcase(s, tc);
+
+	/* create server data */
+	tc = tcase_create("test_websck_create_srv_data");
+	tcase_add_test(tc, test_websck_create_srv_data);
+	suite_add_tcase(s, tc);
+	
 
 	/* integration test case */
 	tc = tcase_create("integration");

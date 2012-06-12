@@ -18,8 +18,8 @@ test_handshake:test_handshake.exe
 test_websocket:test_websocket.exe
 	./test_websocket.exe
 
-test_websocket.exe:test_websocket.o websocket.o
-	$(CC) $(CFLAGS) -o test_websocket.exe test_websocket.o websocket.o handshake.o acrypto.o util.o /usr/local/lib/libcheck.a -lssl -lpthread
+test_websocket.exe:test_websocket.o websocket.o handshake.o acrypto.o util.o dataframe.o
+	$(CC) $(CFLAGS) -o test_websocket.exe test_websocket.o websocket.o handshake.o acrypto.o util.o dataframe.o /usr/local/lib/libcheck.a -lssl -lpthread
 
 test_websocket.o:test_websocket.c ../src/websocket.h
 	$(CC) $(CFLAGS) -c test_websocket.c -I../src
@@ -62,3 +62,7 @@ test_dataframe.o:test_dataframe.c ../src/dataframe.h ../src/util.h
 
 dataframe.o:../src/dataframe.c ../src/dataframe.h
 	$(CC) $(CFLAGS) -c ../src/dataframe.c -I../src
+
+clean:
+	rm *.o
+	rm *.exe
