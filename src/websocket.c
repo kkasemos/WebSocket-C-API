@@ -21,19 +21,19 @@ ssize_t (*neti_accept)(int socket, struct sockaddr *addr, socklen_t *lenp);
 
 int websck_init_sockaddr(struct sockaddr_in *name, const char *hostname, uint16_t port)
 {
-  struct hostent *hostinfo;  
+	struct hostent *hostinfo;  
 
-  /* give the socket a name */
-  name->sin_family = AF_INET;
-  name->sin_port = htons(port);
-  hostinfo = gethostbyname(hostname);
+	/* give the socket a name */
+	name->sin_family = AF_INET;
+	name->sin_port = htons(port);
+	hostinfo = gethostbyname(hostname);
 
-  if(hostinfo == NULL)
-  {
-    fprintf(stderr, "Unknow host %s.\n", hostname);
-  }
+	if(hostinfo == NULL)
+	{
+		fprintf(stderr, "Unknow host %s.\n", hostname);
+	}
 
-  name->sin_addr = *(struct in_addr *)hostinfo->h_addr;
+	name->sin_addr = *(struct in_addr *)hostinfo->h_addr;
 }
 
 int websck_bind(const char* hostname, uint16_t port)
@@ -64,36 +64,41 @@ int websck_bind(const char* hostname, uint16_t port)
 
 int websck_connect(const char* hostname, uint16_t port)
 {
-  struct sockaddr_in serv_name;
-  int sock = socket(PF_INET, SOCK_STREAM, 0);
-  int rs;
+	struct sockaddr_in serv_name;
+	int sock = socket(PF_INET, SOCK_STREAM, 0);
+	int rs;
 
-  websck_init_sockaddr(&serv_name, hostname, port);
+	websck_init_sockaddr(&serv_name, hostname, port);
 
-  if(connect(sock, (struct sockaddr*)&serv_name, sizeof(serv_name)) < 0)
-  {
-    //  perror("Failed to connect the client socket");
-    return -1;
-  }
+	if(connect(sock, (struct sockaddr*)&serv_name, sizeof(serv_name)) < 0)
+	{
+		//  perror("Failed to connect the client socket");
+		return -1;
+	}
 
-  return sock;
+	return sock;
 }
 
 int websck_shutdown(int socket, int how)
 {
-  if(shutdown(socket, how) < 0)
-  {
-    return -1;
-  }
+	if(shutdown(socket, how) < 0)
+	{
+		return -1;
+	}
 }
 
 int websck_close(int socket)
 {
-  if(close(socket) < 0)
-  {
-    perror("Failed to close the socket");
-    return -1;
-  }
+	if(close(socket) < 0)
+	{
+		perror("Failed to close the socket");
+		return -1;
+	}
+}
+
+struct websck_cli_data* websck_get_cli_data(int socket)
+{
+	
 }
 
 int websck_recv(int socket, void *buffer, size_t size, int flags)
@@ -103,109 +108,69 @@ int websck_recv(int socket, void *buffer, size_t size, int flags)
 	unsigned char frm[MAX_BUFF_LEN];
 	size_t plen; /* payload length */
 	int    rb;   /* received bytes */
+	int    rs;   /* result of websocket buffer operation */
 	struct websck_cli_data clidata;
 
-	/* get the clinet's buffer by the socket */
-	clidata = websck_get_cli(socket);
+	/* /\* get the clinet's buffer by the socket *\/ */
+	/* clidata = websck_get_cli_data(socket); */
 
-	/* operate as websocket state */
-	switch(clidata->state) {
-	case WEBSCK_RECV_PAYLOAD:
-		/* receving the payload */
-		websck_buff_recv_pload(clidata->inbuff);
+	/* /\* operate as websocket state *\/ */
+	/* switch(clidata->state) { */
+	/* case WEBSCK_RECV_PAYLOAD: */
+	/* 	/\* receving the payload *\/ */
+	/* 	rs = websck_buff_recv_pload(clidata->inbuff, clidata->initer); */
 
-		/* all the payload received? */
-		if(websck_buff_pload_recv(clidata->inbuff)) {
-			clidata->state = WEBSCK_READY;
-			/* reset */
-		}
-		break;
-	case WEBSCK_READY:
-		/* ready to read the next frame */
-		if(websck_buff_is_empty(cli->inbuff)) {
-			/* receive data from the socket */
-		}
+	/* 	if(-1 == rs && WEBSCK_SYS_ERR == websck_errno) { */
+	/* 		// websck_buff_cli__data_rm(clidata); */
+	/* 		return -1; */
+	/* 	} */
 
-		/* iterate the frame in the buffer */
-		websck_buff_recv_frm(cli->inbuff);
+	/* 	/\* end of playload? *\/ */
+	/* 	if(websck_buff_is_eop(clidata->initer)) { */
+	/* 		clidata->state = WEBSCK_READY; */
+	/* 		/\* reset iterator *\/ */
+	/* 		websck_buff_reset_iter(clidata->initer); */
+	/* 	} */
 
-		break;
-	case WEBSCK_RECV_FRAME:
-		/* receving the frame */
-		break;
-		
-	}
+	/* 	break; */
 
-	/* end of payload? */
-	if(!websck_buff_is_eop(clidata->inbuff)) {
-		psize = websck_buff_recv_pload(buffer, size, clidata->inbuff);
-		
-		/* could copy all? */
-		if() {
-			websck_buff_reset_iter(clidata->inbuff);
-		}
-	}
+	/* case WEBSCK_READY:		 */
+	/* case WEBSCK_RECV_FRAME: */
+	/* 	/\* ready to read the next frame */
+	/* 	   or receving the frame *\/ */
+	/* 	if(websck_buff_is_empty(clidata->inbuff)) { */
+	/* 		/\* receive data from the socket *\/ */
+	/* 	} */
 
-	if(!websck_buff_is_empty(clidata->inbuff)) {
-		fsize = websck_buff_recv_frm(socket, clidata->inbuff);
-		
-		/* frame is complete */
-		if(fsize > 0) {
-			/* copy frame's payload */
-			csize = websck_buff_recv_pload(buffer, size, clidata->inbuff);
+	/* 	/\* recevie the frame in the buffer *\/ */
+	/* 	websck_buff_recv_frm(clidata->inbuff, clidata->initer); */
 
-			/* could copy all? */
-			if(csize == size) {
-				websck_buff_reset_iter(clidata->inbuff);
-			} 
-				
-			
-		}
-	}
-
-	/* read websocket frame to the buffer if there is space available */
-	if(!websck_buff_is_full(clidata->inbuff)) {
-		/* if there is space available at the end */
-		esize = websck_buff_end_size(clidata->inbuff);
-		rb = neti_recv(socket, clidata->data + clidata->end, 
-			       endsize, flags);
-
-		/* if there is space available at the begining */
-		bsize = websck_buff_begin_size(clidata->inbuff);
-		rb = neti_recv(socket, clidata->data + , 
-			       clidata->size - clidata->usesize, flags);
-	}
+	/* 	break;		 */
+	/* } */
 	
-	rb = neti_recv(socket, frm, size, flags);
-	/* print_hex(frm, rb); */
+	/* rb = neti_recv(socket, frm, size, flags); */
+	
+	/* if(rb == -1) { */
+	/* 	/\* if no data in the socket in the case of non-blocking I/O *\/ */
+	/* 	if(errno == EAGAIN || errno == EWOULDBLOCK) { */
+	/* 		websck_errno = WEBSCK_AGAIN; */
+	/* 	} else { */
+	/* 		websck_errno = WEBSCK_SYS_ERR; */
+	/* 	} */
+	/* 	return -1; */
+	/* } */
 
-	if(rb == -1) {
-		/* if no data in the socket in the case of non-blocking I/O */
-		if(errno == EAGAIN || errno == EWOULDBLOCK) {
-			errno = WEBSCK_AGAIN;
-		} else {
-			errno = WEBSCK_SYS_ERR;
-		}
-		return -1;
-	}
-
-	/* verify if the frame is complete */
-	if(!datfrm_is_complete(frm)) {
-		/* threat it as no data in the socket in the case of
-		   non-blocking I/O */ 
-		errno = WEBSCK_AGAIN;
-		return -1;
-	}
+	/* /\* verify if the frame is complete *\/ */
+	/* if(!datfrm_is_complete(frm)) { */
+	/* 	/\* threat it as no data in the socket in the case of */
+	/* 	   non-blocking I/O *\/  */
+	/* 	websck_errno = WEBSCK_AGAIN; */
+	/* 	return -1; */
+	/* } */
 	
 	/* get FIN flag */
 	fin = datfrm_get_fin(frm);
 	
-	/* /\* if FIN flag is 0 means the frame is fragmented *\/ */
-	/* while(0 == fin) { */
-	/* 	/\* read more frames *\/ */
-	/* 	rb = recv(socket, frm, size, flags);	 */
-	/* } */
-
 	/* get MASK flag */
 	mask = datfrm_get_mask(frm);
 	/* printf("mask %d\n", mask); */
@@ -266,14 +231,12 @@ int websck_accept(int socket, struct sockaddr *addr, socklen_t *lenp)
 	if(r < 0) {
 		return -1;
 	} else {
-		//struct websck_srv_data *srvdata;
 		struct websck_cli_data *clidata;
 
 		hndshk_gen_srv(&clihnd, &srvhnd);
 		websck_send_srv_hndshk(clisck, &srvhnd);
 		
 		clidata = websck_create_cli_data(clisck);
-		//srvdata = websck_get_srv_data(socket);
 		websck_add_cli(clidata);
 	}
 
@@ -371,8 +334,6 @@ int websck_recv_hndshk(int socket, char *buff, size_t size)
 		rtp++;
 		hsize++;
 	}
-	//printf("%*s\n", n, rb);
-	//return (rtp >= rtep)? -1:(rtp - buff);
 	return (rtp >= rtep)? -1:hsize;
 }
 
@@ -434,8 +395,6 @@ void websck_init_srv_data(struct websck_srv_data *srvdata)
 	srvdata->inbuff = (struct websck_buff*)0;
 	srvdata->outbuff = (struct websck_buff*)0;
 	srvdata->sock = -1;
-	/* srvdata->clinum = 0; */
-	/* srvdata->clients = (struct linklist*)0; */
 }
 
 void websck_set_default_srv_data(struct websck_srv_data *srvdata, int srvsck)
@@ -443,14 +402,14 @@ void websck_set_default_srv_data(struct websck_srv_data *srvdata, int srvsck)
 	srvdata->inbuff = websck_create_buff(WEBSCK_MAX_IN_BUFF);
 	srvdata->outbuff = websck_create_buff(WEBSCK_MAX_OUT_BUFF);
 	srvdata->sock = srvsck;
-	/* srvdata->clients = linklist_create(); */
 }
 
 struct websck_srv_data *websck_create_srv_data(int srvsck)
 {
 	struct websck_srv_data *srvdata;
 
-	srvdata = (struct websck_srv_data*)malloc(sizeof(struct websck_srv_data));
+	srvdata = (struct websck_srv_data*)
+		malloc(sizeof(struct websck_srv_data));
 	websck_init_srv_data(srvdata);
 
 	/* set default value of the server data */
